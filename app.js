@@ -7,7 +7,7 @@ const fileUpload = require('express-fileupload');
 const app = express();
 // app.set('view engine', 'ejs');
 
-app.use(express.static(__dirname + '/image'));
+app.use(express.static(__dirname));
 app.use(fileUpload());
 app.use(bodyParser.json());
 app.use(function(req, res, next) {
