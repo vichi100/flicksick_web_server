@@ -32,6 +32,7 @@ app.use(function(req, res, next) {
 const Util = require('./models/util');
 const HomeData = require('./models/homeData');
 const Movie = require('./models/movie');
+const TMDBTrending = require('./models/tmdbTrending');
 
 const dbURL = 'mongodb+srv://vichi:vichi123@cluster0.emt5x.mongodb.net/flicksick_india?retryWrites=true&w=majority';
 mongoose
@@ -56,10 +57,37 @@ app.post('/onSave', function(req, res) {
 	onSave(req, res);
 });
 
+app.post('/onSaveTrending', function(req, res) {
+	console.log('onSaveTrending');
+	onSaveTrending(req, res);
+});
+
 app.post('/searchMovie', function(req, res) {
 	console.log('searchMovie');
 	searchMovieByTitle(req, res);
 });
+
+app.post('/getTrendingMovie', function(req, res) {
+	console.log('getTrendingMovie');
+	getTrendingMovie(req, res);
+});
+
+const getTrendingMovie = (req, res) => {
+	const obj = JSON.parse(JSON.stringify(req.body));
+	TMDBTrending.find()
+		.then((result) => {
+			console.log(result);
+			res.send(JSON.stringify(result));
+			res.end();
+			return;
+		})
+		.catch((err) => {
+			console.error(`getTrendingMovie# Failed to fetch documents : ${err}`);
+			res.send(JSON.stringify(null));
+			res.end();
+			return;
+		});
+};
 
 const searchMovieByTitle = (req, res) => {
 	const obj = JSON.parse(JSON.stringify(req.body));
@@ -80,6 +108,67 @@ const searchMovieByTitle = (req, res) => {
 	// db.users.find({"name": /m/})
 };
 
+const onSaveTrending = (req, res) => {
+	// console.log(JSON.stringify(req.body));
+	const obj = JSON.parse(JSON.stringify(req.body));
+	const movieData = obj.movie_data;
+	const dataFor = obj.data_for;
+	const fsId = nanoid();
+
+	// check if this movie exist in movie document.
+	Movie.find({ title: movieData.title, release_date: Number(movieData.release_date) }).then((result) => {
+		console.log('result1: ', result);
+		if (result.length > 0) {
+			// means exist in movie, so update only home data
+			delete movieData['_id'];
+			// console.log(result);
+			HomeData.collection
+				.updateOne(
+					{ title: movieData.title, release_date: Number(movieData.release_date) },
+					{
+						$set: {
+							...movieData,
+							...{ data_for: dataFor },
+							...{ create_date_time: new Date(Date.now()) }
+						}
+					},
+					{ upsert: true }
+				)
+				.then((result2) => {
+					console.log('success');
+					res.send('success');
+					res.end();
+					return;
+				})
+				.catch((err) => {
+					console.error(`onSaveTrending# Failed to update new documents : ${err}`);
+					res.send('fail');
+					res.end();
+					return;
+				});
+		} else {
+			// insert into movie and homedata as well
+
+			movieData['fs_id'] = fsId;
+			// movieData['data_for'] = movie.save_as;
+			const insertMovieData = Movie.collection.insertOne(movieData);
+			const insertHomeData = HomeData.collection.insertOne({ ...movieData, ...{ data_for: dataFor } });
+			Promise.all([ insertMovieData, insertHomeData ])
+				.then(([ result1, result2 ]) => {
+					res.send(JSON.stringify('success'));
+					res.end();
+					return;
+				})
+				.catch((err) => {
+					console.error(`onSaveTrending# Failed to insert new documents : ${err}`);
+					res.send('fail');
+					res.end();
+					return;
+				});
+		}
+	});
+};
+
 const onSave = (req, res) => {
 	// console.log(JSON.stringify(req.body));
 	const obj = JSON.parse(JSON.stringify(req.body));
@@ -91,7 +180,7 @@ const onSave = (req, res) => {
 	var movie;
 	if (movieExistFlag === true) {
 		movieData = movieDict;
-		movieData['create_date_time'] = new Date(Date.now());
+		// movieData['create_date_time'] = new Date(Date.now());
 	} else {
 		var posterImagePath = null;
 		var backdropImagePath = null;
@@ -160,33 +249,33 @@ const onSave = (req, res) => {
 		};
 	}
 
-	// console.log(movieDict);
-
-	// console.log('movieData: ', movieData);
-
 	// check if this movie exist in movie document.
 	Movie.find({ title: movieData.title, release_date: Number(movieData.release_date) }).then((result) => {
 		console.log('result1: ', result);
 		if (result.length > 0) {
 			// means exist in movie, so update only home data
+			delete movieData['_id'];
 			console.log(result);
 			HomeData.collection
 				.updateOne(
 					{ title: movieData.title, release_date: Number(movieData.release_date) },
 					{
 						$set: {
-							...movieData
-							// ...{ data_for: movieDict.save_as }
+							...movieData,
+							...{ data_for: movieDict.save_as }
 						}
 					},
 					{ upsert: true }
 				)
 				.then((result2) => {
 					console.log('success');
+					res.send('success');
+					res.end();
+					return;
 				})
 				.catch((err) => {
 					console.error(`onSave# Failed to update new documents : ${err}`);
-					res.send(JSON.stringify([]));
+					res.send('fail');
 					res.end();
 					return;
 				});
@@ -205,7 +294,7 @@ const onSave = (req, res) => {
 				})
 				.catch((err) => {
 					console.error(`onSave# Failed to insert new documents : ${err}`);
-					res.send(JSON.stringify([]));
+					res.send('fail');
 					res.end();
 					return;
 				});
